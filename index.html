@@ -68,6 +68,7 @@ function render(){
  document.querySelectorAll('nav button').forEach(b=>{b.className=b.dataset.t===S.tab?'on':'';b.onclick=()=>{S.tab=b.dataset.t;S.sel=null;render()}});
  if(S.ready&&!S.cd&&!S.products.some(p=>String(p.id).startsWith('h'))&&S.products.some(p=>/^p\d+$/.test(p.id)&&!DRINK.includes(p.cat))){S.cd=1;safe(loadCarta)}
  if(S.ready&&!S.cb&&S.products.some(p=>String(p.id).startsWith('h'))&&!S.products.some(p=>String(p.id).startsWith('b'))){S.cb=1;safe(loadBebidas)}
+ if(S.ready&&!S.cm&&S.products.some(p=>String(p.id).startsWith('b'))&&!S.products.some(p=>p.cat==='Menús')){S.cm=1;safe(ensureMenus)}
  const a=document.getElementById('app');let h=S.err?`<div class="card" style="background:var(--pay)">${esc(S.err)} <button class="g" onclick="S.err='';render()">OK</button></div>`:'';
  if(S.undo.length)h+=`<div class="card" style="display:flex;align-items:center;gap:10px"><span class="mut" style="flex:1">Última acción: ${esc(S.undo[S.undo.length-1].label)}</span><button class="b" onclick="undo()">↩ Deshacer</button></div>`;
  if(S.ready&&!S.tables.length&&!S.products.length)h+=`<div class="card">La base de datos está vacía. <button class="b" onclick="seed()">Cargar datos de demostración</button></div>`;
@@ -136,7 +137,7 @@ function vTable(id){
  const pend=(o?.items||[]).filter(i=>i.st==='pendiente').length,tot=total(o),rest=tot-paid(o);
  return `<button class="g" onclick="S.sel=null;render()">← Mesas</button><h2 style="display:inline-block">Mesa ${esc(dn(t))} <span class="mut">${SEC[t.sec]?SEC[t.sec][1]+' · ':''}${LBL[status(t)]}</span></h2> ${S.tables.some(x=>x.mergedInto===id)?`<button class="g" onclick="split('${id}')">Separar mesas</button>`:''}
  <div class="split"><div><div class="chips">${cats.map(c=>`<button class="g cat ${c===S.cat?'on':''}" onclick="S.cat='${esc(c)}';render()"><span>${emo(c)}</span>${esc(c)}</button>`).join('')}</div>
- <div class="sech">${emo(S.cat)} ${esc(S.cat)} <span style="opacity:.8;font-weight:400">· ${prods.length} productos</span></div>${IMG[CATIMG[S.cat]]?`<img class="ban" src="${IMG[CATIMG[S.cat]]}" alt="">`:''}<div class="prods">${prods.map(p=>`<button class="p ${p.out?'off':''}" ${p.out?'disabled':''} onclick="add('${p.id}')">${IMG[p.img]?`<img class="pi" src="${IMG[p.img]}" alt="">`:`<span class="em">${p.ico||emo(p.cat)}</span>`}<b>${esc(p.name)}</b>${p.d?`<small class="mut" style="font-size:11px">${esc(p.d)}</small>`:''}<span class="pr">${p.out?'Agotado':eur(p.price)}</span></button>`).join('')||'<span class="mut">Sin productos en esta categoría</span>'}</div></div>
+ <button class="b" style="width:100%;margin:6px 0" onclick="openMenu()">🍽️ Menú Cachopo · ${eur(mcPrice())} por pareja</button><div class="sech">${emo(S.cat)} ${esc(S.cat)} <span style="opacity:.8;font-weight:400">· ${prods.length} productos</span></div>${IMG[CATIMG[S.cat]]?`<img class="ban" src="${IMG[CATIMG[S.cat]]}" alt="">`:''}<div class="prods">${prods.map(p=>`<button class="p ${p.out?'off':''}" ${p.out?'disabled':''} onclick="add('${p.id}')">${IMG[p.img]?`<img class="pi" src="${IMG[p.img]}" alt="">`:`<span class="em">${p.ico||emo(p.cat)}</span>`}<b>${esc(p.name)}</b>${p.d?`<small class="mut" style="font-size:11px">${esc(p.d)}</small>`:''}<span class="pr">${p.out?'Agotado':eur(p.price)}</span></button>`).join('')||'<span class="mut">Sin productos en esta categoría</span>'}</div></div>
  <div class="card ord"><div class="ordh">🧾 Comanda · Mesa ${esc(dn(t))}</div>${!o?`<div>Comensales <input id="gu" type="number" min="1" value="2" style="width:70px"> <button class="b" onclick="openT('${id}')">Abrir mesa</button></div><p><button class="g" onclick="reserve('${id}')">${t.reserved?'Quitar reserva':'Reservar'}</button> <button class="g" onclick="delT('${id}')">Eliminar mesa</button></p>`:`
  <div class="mut">${o.guests} comensales · ${ago(o.opened)}</div>
  ${o.items.map(i=>`<div class="row" style="${i.st==='cancelado'?'text-decoration:line-through;opacity:.5':''}"><div><b>${i.qty}× ${esc(i.name)}</b> <span class="mut">${eur(i.price*i.qty)}</span><br><button class="g" onclick="cyc('${i.id}')">${i.st}</button> <textarea rows="2" placeholder="Observación (Enter = nueva línea)" onchange="note('${i.id}',this.value)">${esc(i.note||'')}</textarea></div><button class="g" onclick="qty('${i.id}',-1)">−</button><button class="g" onclick="qty('${i.id}',1)">+</button></div>`).join('')||'<p class="mut">Sin productos</p>'}
@@ -145,45 +146,52 @@ function vTable(id){
  <p><button class="b" ${pend?'':'disabled'} onclick="send('${id}')">Enviar ${pend} pendientes</button> <button class="g" onclick="bill('${id}')">${o.bill?'Reabrir':'Pedir cuenta'}</button>${!paid(o)&&!o.items.some(i=>i.st!=='pendiente')?` <button class="g" onclick="cancelT('${id}')">Cerrar mesa</button>`:''}</p>
  <div>Importe <input id="am" type="number" step="0.01" value="${Math.max(rest,0).toFixed(2)}" style="width:100px"> <button class="b" onclick="pay('${id}','Efectivo')">Efectivo</button> <button class="b" onclick="pay('${id}','Tarjeta')">Tarjeta</button> <button class="g" onclick="pay('${id}','Otro')">Otro</button></div>
  <p class="mut">Dividir: <input id="dv" type="number" min="1" value="${o.guests||2}" style="width:60px" oninput="document.getElementById('dvr').textContent=eur(${rest}/Math.max(1,this.value))"> = <b id="dvr">${eur(rest/Math.max(1,o.guests||2))}</b> por persona</p>`}</div></div>`}
-/* ===== Menú Cachopo (40 € por pareja): 1 entrante + 1 cachopo + postre o café, por cada menú ===== */
-const MC_ENT=['Tempura de berenjena o calabacín','Gyozas de pollo','Ensalada templada de bacon','Ensalada mediterránea','Boquerones fritos','Corazones de alcachofas con jamón y Pedro Ximénez','Croquetas caseras de jamón o roquefort (sugerido)'];
-const MC_POST=['Tarta de queso y Oreo','Tarta de queso horneada','Tarta red Velvet','Café (uno por comensal)'];
-const MC_TRAD=['Cachopo Clásico','Cachopo Roquefort','Cachopo Mallorquina'],MC_GOUR=['Cachopo Asturiano','Cachopo Burgos','Cachopo Picadillo'];
-function mcOpts(){const P=S.products.filter(p=>p.on),nm=n=>P.find(p=>p.name===n),sT=nm('Suplemento cachopo tradicional')?.price??5,sG=nm('Suplemento cachopo gourmet')?.price??8;
- return{cach:[...P.filter(p=>/^Cachopo Duroc/.test(p.name)).map(p=>({n:p.name,s:0,g:'Duroc · incluido en el menú'})),
-   ...MC_TRAD.map(n=>({n,s:sT,g:'Tradicionales · +'+eur(sT)})),...MC_GOUR.map(n=>({n,s:sG,g:'Gourmet · +'+eur(sG)}))],
-  sid:nm('Botella de sidra'),car:nm('Carajillo')}}
-const mcNew=()=>({e:-1,c:-1,d:-1,sid:0,car:0});
-function openMenu(pid){S.mc={tid:S.sel,pid,p:[mcNew()]};render()}
-function mcSet(i,k,v){S.mc.p[i][k]=v;if(k==='d'&&v!==MC_POST.length-1)S.mc.p[i].car=0;render()}
+/* ===== Menú Cachopo (40 € por pareja) — datos propios, no dependen de la base de datos ===== */
+const MC={price:40,sT:5,sG:8,sid:5,car:1,
+ ent:['Tempura de berenjena o calabacín','Gyozas de pollo','Ensalada templada de bacon','Ensalada mediterránea','Boquerones fritos','Corazones de alcachofas con jamón y Pedro Ximénez','Croquetas caseras de jamón o roquefort (sugerido)'],
+ post:['Tarta de queso y Oreo','Tarta de queso horneada','Tarta red Velvet','Café (uno por comensal)'],
+ duroc:['Cachopo Duroc de bacon y queso (nuevo)','Cachopo Duroc de gouda y jamón','Cachopo Duroc de jamón y queso azul'],
+ trad:['Cachopo Clásico (más vendido)','Cachopo Roquefort','Cachopo Mallorquina'],
+ gour:['Cachopo Asturiano','Cachopo Burgos','Cachopo Picadillo'],
+ ref:['Coca-Cola','Coca-Cola Zero','Coca-Cola Zero Zero','Fanta naranja','Fanta limón','Aquarius naranja','Aquarius limón','Sprite','Nestea','Tónica','Better Kas','Choleck']};
+const MC_CAFE=MC.post.length-1;
+function mcCach(){return[...MC.duroc.map(n=>({n,s:0,g:'Duroc · incluido'})),...MC.trad.map(n=>({n,s:MC.sT,g:'Tradicionales · +'+eur(MC.sT)})),...MC.gour.map(n=>({n,s:MC.sG,g:'Gourmet · +'+eur(MC.sG)}))]}
+const mcProd=n=>S.products.find(p=>p.name===n);
+const mcPrice=()=>mcProd('Menú Cachopo')?.price??MC.price;
+const mcNew=()=>({e:-1,c:-1,d:-1,sid:0,car:0,r:[-1,-1]});
+function openMenu(){S.mc={tid:S.sel,p:[mcNew()]};render()}
+function mcSet(i,k,v){const x=S.mc.p[i];if(k==='r0')x.r[0]=v;else if(k==='r1')x.r[1]=v;else x[k]=v;if(k==='d'&&v!==MC_CAFE)x.car=0;render()}
 function mcAddP(){S.mc.p.push(mcNew());render()}
 function mcDel(i){if(S.mc.p.length>1)S.mc.p.splice(i,1);render()}
 function mcClose(){S.mc=null;render()}
 const mcOk=m=>m.p.every(x=>x.e>=0&&x.c>=0&&x.d>=0);
-function mcView(){const m=S.mc,O=mcOpts(),mp=S.products.find(x=>x.id===m.pid),base=mp?.price||0;
- const sub=x=>base+(O.cach[x.c]?.s||0)+(x.sid&&O.sid?O.sid.price:0)+(x.car&&O.car?x.car*O.car.price:0);
- const tot=m.p.reduce((a,x)=>a+sub(x),0),ok=mcOk(m);
- const cs=x=>{let h='<option value="-1">Elegir cachopo…</option>',g='';O.cach.forEach((c,i)=>{if(c.g!==g){if(g)h+='</optgroup>';h+=`<optgroup label="${esc(c.g)}">`;g=c.g}h+=`<option value="${i}" ${x.c===i?'selected':''}>${esc(c.n)}</option>`});return h+(g?'</optgroup>':'')};
+function mcView(){const m=S.mc,C=mcCach(),base=mcPrice();
+ const sub=x=>base+(C[x.c]?.s||0)+(x.sid?MC.sid:0)+x.car*MC.car,tot=m.p.reduce((a,x)=>a+sub(x),0),ok=mcOk(m);
  const opt=(L,v,ph)=>`<option value="-1">${ph}</option>`+L.map((n,j)=>`<option value="${j}" ${v===j?'selected':''}>${esc(n)}</option>`).join('');
- return `<div class="mo"><div><div class="card"><div class="hd"><h3 style="margin:0">🍽️ Menú Cachopo</h3><button class="g" onclick="mcClose()">✕ Cerrar</button></div><div class="mut">${eur(base)} por pareja · cada menú: 1 entrante + 1 cachopo para compartir, bebidas incluidas y postre para compartir o café por comensal</div></div>
+ const cs=x=>{let h='<option value="-1">Elegir cachopo…</option>',g='';C.forEach((c,i)=>{if(c.g!==g){if(g)h+='</optgroup>';h+=`<optgroup label="${esc(c.g)}">`;g=c.g}h+=`<option value="${i}" ${x.c===i?'selected':''}>${esc(c.n)}</option>`});return h+'</optgroup>'};
+ return `<div class="mo"><div><div class="card"><div class="hd"><h3 style="margin:0">🍽️ Menú Cachopo</h3><button class="g" onclick="mcClose()">✕ Cerrar</button></div><div class="mut">${eur(base)} por pareja · incluye pan con tomate y alioli, 1 entrante y 1 cachopo para compartir, bebidas, y postre para compartir o café por comensal.</div></div>
  ${m.p.map((x,i)=>`<div class="card"><div class="hd"><b>Menú ${i+1} (pareja)</b>${m.p.length>1?`<button class="g" onclick="mcDel(${i})">Quitar</button>`:''}</div>
-  Entrante<select onchange="mcSet(${i},'e',+this.value)">${opt(MC_ENT,x.e,'Elegir entrante…')}</select>
-  Cachopo<select onchange="mcSet(${i},'c',+this.value)">${cs(x)}</select>
-  Postre o café<select onchange="mcSet(${i},'d',+this.value)">${opt(MC_POST,x.d,'Elegir postre o café…')}</select>
-  ${x.d===MC_POST.length-1&&O.car?`Carajillos (+${eur(O.car.price)} cada uno)<select onchange="mcSet(${i},'car',+this.value)">${[0,1,2].map(n=>`<option value="${n}" ${x.car===n?'selected':''}>${n}</option>`).join('')}</select>`:''}
-  ${O.sid?`<label><input type="checkbox" ${x.sid?'checked':''} onchange="mcSet(${i},'sid',this.checked?1:0)"> Botella de sidra +${eur(O.sid.price)}</label>`:''}
-  <div class="mut">Bebidas incluidas: agua, refresco y caña 200ml por comensal; vino y gaseosa 1L por menú (anota en observaciones lo que elijan).</div>
+  <b>1 · Entrante</b><select onchange="mcSet(${i},'e',+this.value)">${opt(MC.ent,x.e,'Elegir entrante…')}</select>
+  <b>2 · Cachopo</b><select onchange="mcSet(${i},'c',+this.value)">${cs(x)}</select>
+  <b>3 · Postre o café</b><select onchange="mcSet(${i},'d',+this.value)">${opt(MC.post,x.d,'Elegir postre o café…')}</select>
+  ${x.d===MC_CAFE?`Carajillos (+${eur(MC.car)} cada uno)<select onchange="mcSet(${i},'car',+this.value)">${[0,1,2].map(n=>`<option value="${n}" ${x.car===n?'selected':''}>${n}</option>`).join('')}</select>`:''}
+  <b>4 · Bebidas incluidas</b><div class="mut">Por comensal: agua 500ml, caña de barril 200ml y un refresco. Por menú: vino y gaseosa 1L.</div>
+  Refresco comensal 1<select onchange="mcSet(${i},'r0',+this.value)">${opt(MC.ref,x.r[0],'Sin elegir')}</select>
+  Refresco comensal 2<select onchange="mcSet(${i},'r1',+this.value)">${opt(MC.ref,x.r[1],'Sin elegir')}</select>
+  <label><input type="checkbox" ${x.sid?'checked':''} onchange="mcSet(${i},'sid',this.checked?1:0)"> Botella de sidra +${eur(MC.sid)}</label>
   <div class="mut">Subtotal ${eur(sub(x))}</div></div>`).join('')}
- <div class="card"><button class="g" onclick="mcAddP()">+ Añadir otro menú</button><p style="font-size:20px"><b>Total ${eur(tot)}</b></p><button class="b" style="width:100%" ${ok?'':'disabled'} onclick="mcAdd()">${ok?'Añadir a la comanda':'Completa entrante, cachopo y postre/café'}</button></div></div></div>`}
-function mcAdd(){const m=S.mc,O=mcOpts(),mp=S.products.find(x=>x.id===m.pid),id=m.tid;if(!mp||!mcOk(m))return;
+ <div class="card"><button class="g" onclick="mcAddP()">+ Añadir otro menú</button><p style="font-size:20px"><b>Total ${eur(tot)}</b></p><button class="b" style="width:100%" ${ok?'':'disabled'} onclick="mcAdd()">${ok?'Añadir a la comanda':'Elige entrante, cachopo y postre/café'}</button></div></div></div>`}
+function mcAdd(){const m=S.mc,C=mcCach(),mp=mcProd('Menú Cachopo'),base=mcPrice(),id=m.tid;if(!mcOk(m))return;
  const o=S.orders[id]||{items:[],guests:m.p.length*2,opened:Date.now(),pays:[],bill:false},n=structuredClone(o);
- m.p.forEach(x=>{const c=O.cach[x.c];n.items.push({id:uid(),pid:mp.id,name:'Menú Cachopo · '+MC_ENT[x.e]+' · '+c.n+' · '+(x.d===MC_POST.length-1?'Café':MC_POST[x.d]),price:mp.price+c.s,qty:1,st:'pendiente',note:''})});
- const ex=(p,q)=>{if(p&&q>0)n.items.push({id:uid(),pid:p.id,name:p.name,price:p.price,qty:q,st:'pendiente',note:''})};
- ex(O.sid,m.p.filter(x=>x.sid).length);ex(O.car,m.p.reduce((a,x)=>a+x.car,0));
+ m.p.forEach(x=>{const c=C[x.c],rf=x.r.filter(v=>v>=0).map(v=>MC.ref[v]);
+  n.items.push({id:uid(),pid:mp?.id||'menu-cachopo',name:'Menú Cachopo · '+MC.ent[x.e]+' · '+c.n+' · '+(x.d===MC_CAFE?'Café':MC.post[x.d]),price:base+c.s,qty:1,st:'pendiente',note:(rf.length?'Refrescos: '+rf.join(' / ')+'\n':'')+'Vino y gaseosa 1L'})});
+ const ex=(nm,def,q)=>{if(q>0){const p=mcProd(nm);n.items.push({id:uid(),pid:p?.id||'mc-'+nm,name:nm,price:p?.price??def,qty:q,st:'pendiente',note:''})}};
+ ex('Botella de sidra',MC.sid,m.p.filter(x=>x.sid).length);ex('Carajillo',MC.car,m.p.reduce((a,x)=>a+x.car,0));
  S.mc=null;saveOrder(id,n);render()}
+async function ensureMenus(){let n=0;for(const [ico,name,price,d,img] of BEB[0][1]){n++;await db.doc('products/bm'+n).set({cat:'Menús',name,price,ico,d:d||'',img:img||'',on:true,out:false,fav:name==='Menú Cachopo',ord:-100+n,sold:0})}}
 async function mut(id,fn){const o=structuredClone(S.orders[id]);if(!o)return;fn(o);await saveOrder(id,o)}
 function openT(id){const g=+document.getElementById('gu').value||1;saveOrder(id,{items:[],guests:g,opened:Date.now(),pays:[],bill:false})}
-function add(pid){const p=S.products.find(x=>x.id===pid),id=S.sel;if(p&&p.cat==='Menús'&&p.name==='Menú Cachopo')return openMenu(pid);const o=S.orders[id]||{items:[],guests:1,opened:Date.now(),pays:[],bill:false};const n=structuredClone(o);
+function add(pid){const p=S.products.find(x=>x.id===pid),id=S.sel;if(p&&p.cat==='Menús'&&p.name==='Menú Cachopo')return openMenu();const o=S.orders[id]||{items:[],guests:1,opened:Date.now(),pays:[],bill:false};const n=structuredClone(o);
  const ex=n.items.find(i=>i.pid===pid&&i.st==='pendiente'&&!i.note);if(ex)ex.qty++;else n.items.push({id:uid(),pid,name:p.name,price:p.price,qty:1,st:'pendiente',note:''});saveOrder(id,n)}
 const it=(iid,f)=>mut(S.sel,o=>{const i=o.items.find(x=>x.id===iid);if(i)f(i,o)});
 function qty(iid,d){it(iid,(i,o)=>{if(i.st!=='pendiente'&&d<0){i.st='cancelado';return}i.qty+=d;if(i.qty<1)o.items=o.items.filter(x=>x!==i&&x.id!==iid)})}
